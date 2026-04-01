@@ -39,3 +39,12 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Claude internal state
+.claude/
+
+# Temporary reference materials
+temp_info/
+
+# Demo artifacts
+summary.md
