@@ -78,8 +78,14 @@ class PermissionGuard:
             return True  # 工具级规则，直接命中
 
         # 提取用于匹配的参数内容
-        content = self._extract_match_content(tool_name, args)
+        contents = self._extract_match_contents(tool_name, args)
 
+        # Bash 复合命令：只要任意一个 segment 命中规则即算命中
+        return any(self._match_pattern(rule_pattern, c) for c in contents)
+
+    @staticmethod
+    def _match_pattern(rule_pattern: str, content: str) -> bool:
+        """将单条内容匹配到具体规则模式。"""
         # 前缀匹配（向后兼容的 :* 语法）
         if rule_pattern.endswith(":*"):
             prefix = rule_pattern[:-2]
@@ -92,15 +98,29 @@ class PermissionGuard:
         # 精确匹配
         return content == rule_pattern
 
-    @staticmethod
-    def _extract_match_content(tool_name: str, args: dict) -> str:
-        """根据工具名提取用于规则匹配的核心参数字符串。"""
+    @classmethod
+    def _extract_match_contents(cls, tool_name: str, args: dict) -> list[str]:
+        """根据工具名提取用于规则匹配的核心参数字符串列表。
+
+        Bash 会按复合命令分隔符拆分为多个 segment，防止 'echo 1; rm -rf /' 绕过规则。
+        """
         if tool_name == "Bash":
-            return args.get("command", "")
+            command = args.get("command", "")
+            return cls._split_bash_command(command)
         if tool_name in ("ReadFile", "WriteFile"):
-            return args.get("path", "")
+            return [args.get("path", "")]
         # 对于未知工具，回退到拼接全部参数
-        return str(args)
+        return [str(args)]
+
+    @staticmethod
+    def _split_bash_command(command: str) -> list[str]:
+        """粗略拆分 Bash 复合命令，支持 ; && ||。"""
+        import re
+
+        # 按 ; && || 拆分，保留空命令的容错
+        segments = re.split(r"\s*(?:;|\|\||&&)\s*", command.strip())
+        # 过滤空字符串
+        return [seg.strip() for seg in segments if seg.strip()]
 
     # ------------------------------------------------------------------
     # 核心决策接口

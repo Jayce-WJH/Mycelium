@@ -136,3 +136,81 @@ async def test_bee_agent_with_tool_call():
     tool_message = [m for m in bee.messages if m.get("role") == "tool"]
     assert len(tool_message) == 1
     assert tool_message[0]["content"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_bee_agent_missing_required_field():
+    """当 LLM 传入的参数缺少 required 字段时，BeeAgent 应返回错误而不调用工具。"""
+    from mycelium.agent import BeeAgent
+
+    fake_llm = FakeLLMClient([
+        {
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_bad",
+                        "function": {
+                            "name": "Bash",
+                            "arguments": '{}'  # 缺少必填字段 command
+                        }
+                    }]
+                }
+            }]
+        },
+        {
+            "choices": [{
+                "message": {"content": "已处理"}
+            }]
+        }
+    ])
+
+    registry = ToolRegistry().register(bash_tool)
+    bee = BeeAgent(llm_client=fake_llm, registry=registry)
+
+    outputs = [chunk async for chunk in bee.run("执行空参数 Bash")]
+
+    # 第二个 chunk 是 LLM 的最终回复（因为工具调用被拦截，没有真正执行）
+    assert outputs[1] == "已处理"
+
+    tool_message = [m for m in bee.messages if m.get("role") == "tool"]
+    assert len(tool_message) == 1
+    assert "缺少必填参数" in tool_message[0]["content"]
+    assert "command" in tool_message[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_bee_agent_compat_mode_call_id():
+    """compat_mode 下应将 call_id 包装进 user 消息，便于模型对应上下文。"""
+    from mycelium.agent import BeeAgent
+
+    fake_llm = FakeLLMClient([
+        {
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_compat_42",
+                        "function": {
+                            "name": "Bash",
+                            "arguments": '{"command": "echo compat"}'
+                        }
+                    }]
+                }
+            }]
+        },
+        {
+            "choices": [{
+                "message": {"content": "完成"}
+            }]
+        }
+    ])
+
+    registry = ToolRegistry().register(bash_tool)
+    bee = BeeAgent(llm_client=fake_llm, registry=registry, compat_mode=True)
+
+    _ = [chunk async for chunk in bee.run("测试 compat_mode")]
+
+    compat_messages = [m for m in bee.messages if m.get("role") == "user" and "call_id=" in str(m.get("content", ""))]
+    assert len(compat_messages) == 1
+    assert "call_compat_42" in compat_messages[0]["content"]

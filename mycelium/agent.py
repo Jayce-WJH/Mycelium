@@ -121,14 +121,22 @@ class BeeAgent:
                         args = json.loads(tool_args_raw) if isinstance(tool_args_raw, str) else tool_args_raw
                     except json.JSONDecodeError:
                         args = {}
-                    result_text = tool.execute(args)
+
+                    # 简单的必填参数校验（validateInput 的最小实现）
+                    required = tool.parameters.get("required", [])
+                    missing = [field for field in required if field not in args]
+                    if missing:
+                        result_text = f"错误：缺少必填参数 {missing}。"
+                    else:
+                        result_text = tool.execute(args)
 
                 if self.compat_mode:
                     # 兼容模式：部分国产 OpenAI 兼容端点不支持 role="tool"，
                     # 把结果包装成 user 消息，让模型继续理解上下文。
+                    # 加入 call_id 帮助模型把结果和工具调用对应上。
                     self.messages.append({
                         "role": "user",
-                        "content": f"[工具 {tool_name} 执行结果]\n{result_text}",
+                        "content": f"[工具 {tool_name} · call_id={call_id}]\n{result_text}",
                     })
                 else:
                     self.messages.append({

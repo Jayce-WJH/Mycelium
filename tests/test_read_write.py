@@ -56,10 +56,24 @@ def test_write_file_update():
     print("✅ test_write_file_update 通过")
 
 
+def test_read_file_size_limit():
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as f:
+        # 写入超过 1MB 的内容
+        f.write("x" * (1_000_000 + 1))
+        tmp_path = f.name
+
+    result = read_file_tool.execute({"path": tmp_path})
+    assert "超过安全限制" in result
+
+    Path(tmp_path).unlink()
+    print("✅ test_read_file_size_limit 通过")
+
+
 if __name__ == "__main__":
     test_read_file_success()
     test_read_file_not_exists()
     test_read_file_is_directory()
     test_write_file_create()
     test_write_file_update()
+    test_read_file_size_limit()
     print("\n所有 Read/Write 测试通过 🎉")

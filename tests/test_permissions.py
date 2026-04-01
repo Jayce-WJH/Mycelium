@@ -121,6 +121,37 @@ def test_wrap_tool():
     print("✅ test_wrap_tool 通过")
 
 
+def test_bash_compound_command_blocked():
+    """复合命令中只要有一个 segment 命中 deny 就应该拦截。"""
+    g = PermissionGuard(deny=["Bash(rm -rf *)"])
+
+    assert g.evaluate("Bash", {"command": "echo 1; rm -rf /tmp"}).behavior == "deny"
+    assert g.evaluate("Bash", {"command": "echo 1 && rm -rf /tmp"}).behavior == "deny"
+    assert g.evaluate("Bash", {"command": "echo 1 || rm -rf /tmp"}).behavior == "deny"
+    #  safe compound should still pass
+    assert g.evaluate("Bash", {"command": "echo 1; echo 2"}).behavior == "allow"
+    print("✅ test_bash_compound_command_blocked 通过")
+
+
+def test_default_guard_auto_load_config():
+    """default_guard 应在当前目录下自动探测 .mycelium/permissions.json。"""
+    import os
+
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        os.chdir(tmp_dir)
+        config_dir = Path(tmp_dir) / ".mycelium"
+        config_dir.mkdir()
+        cfg = config_dir / "permissions.json"
+        cfg.write_text(json.dumps({"deny": ["Bash(ls)"]}), encoding="utf-8")
+
+        g = default_guard()
+        assert g.evaluate("Bash", {"command": "ls"}).behavior == "deny"
+
+    os.chdir(original_cwd)
+    print("✅ test_default_guard_auto_load_config 通过")
+
+
 if __name__ == "__main__":
     test_default_guard_blocks_dangerous_bash()
     test_exact_match()
@@ -132,4 +163,6 @@ if __name__ == "__main__":
     test_config_file_override()
     test_write_file_system_paths_blocked_by_default()
     test_wrap_tool()
+    test_bash_compound_command_blocked()
+    test_default_guard_auto_load_config()
     print("\n所有 PermissionGuard 测试通过 🎉")

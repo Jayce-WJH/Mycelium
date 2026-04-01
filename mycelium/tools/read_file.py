@@ -29,6 +29,19 @@ def _execute_read_file(args: dict) -> str:
     if path.is_dir():
         return f"错误：'{path}' 是一个目录，不是文件。"
 
+    # 防止误读超大文件导致内存或上下文爆炸
+    MAX_SIZE_BYTES = 1_000_000  # 1 MB
+    try:
+        stat = path.stat()
+        if stat.st_size > MAX_SIZE_BYTES:
+            return (
+                f"错误：文件 '{path}' 大小为 {stat.st_size} 字节，"
+                f"超过安全限制 ({MAX_SIZE_BYTES} 字节)。"
+                f"如需处理大文件，请使用专门的分块读取工具。"
+            )
+    except Exception:
+        pass  # 某些特殊路径可能无法 stat，交给 read_text 处理
+
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
         return content
